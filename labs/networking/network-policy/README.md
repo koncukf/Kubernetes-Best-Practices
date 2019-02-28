@@ -132,7 +132,7 @@ In the previous section, a backend NGINX pod was scheduled, and a network policy
 Update the network policy to allow traffic from pods with the labels app:webapp,role:frontend and in any namespace.
    
     ```bash
-      kubectl apply -f ./labs/networking/network-policy/backend-policy2.yaml    
+      kubectl apply -f ./labs/networking/network-policy/backend-policy-label.yaml    
     ``` 
     
 Now schedule a pod that is labeled as app=webapp,role=frontend and attach a terminal session:   
@@ -182,8 +182,10 @@ Exit out of the attached terminal session. The test pod is automatically deleted
     # First, create a new namespace to simulate a production namespace:
     kubectl create namespace production
     kubectl label namespace/production purpose=production 
+    
     # Schedule a test pod in the production namespace that is labeled as app=webapp,role=frontend. Attach a terminal session
-    kubectl run --rm -it frontend --image=alpine --labels app=webapp,role=frontend --namespace production --generator=run-pod/v1    
+    kubectl run --rm -it frontend --image=alpine --labels app=webapp,role=frontend --namespace production --generator=run-pod/v1 
+    
     # Once at shell prompt, use wget to confirm you can access the default NGINX web page:
     wget -qO- http://backend.development    
     ```
@@ -206,7 +208,7 @@ Exit out of the attached terminal session. The test pod is automatically deleted
 Now let's update the ingress rule namespaceSelector section to only allow traffic from within the development namespace.
 
       ```bash
-       kubectl apply -f ./labs/networking/network-policy/backend-policy-update.yaml    
+       kubectl apply -f ./labs/networking/network-policy/backend-policy-namespace.yaml    
       ``` 
 Now schedule another pod in the production namespace and attach a terminal session:
 
