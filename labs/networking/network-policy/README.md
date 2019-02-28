@@ -2,12 +2,6 @@
 
 When you run modern, microservices-based applications in Kubernetes, you often want to control which components can communicate with each other. The principle of least privilege should be applied to how traffic can flow between pods in an AKS cluster. For example, you likely want to block traffic directly to backend applications. In Kubernetes, the Network Policy feature lets you define rules for ingress and egress traffic between pods in a cluster.
 
-## Prerequisites
-
-* Complete previous labs:
-    * [Azure Kubernetes Service](../../create-aks-cluster/README.md)
-    * [Build Application Components in Azure Container Registry](../../build-application/README.md)
-    * [Helm Setup and Deploy Application](../../helm-setup-deploy/README.md)
 
 ## Overview of network policy
 
@@ -29,12 +23,12 @@ The following example script:
      #Creates an AKS cluster in the defined virtual network, and enables network policy.
      
 Provide your own secure SP_PASSWORD. If desired, replace the RESOURCE_GROUP_NAME and CLUSTER_NAME variables:
-      ```bash
-      SP_PASSWORD=mySecurePassword
-      RESOURCE_GROUP_NAME=myResourceGroup-NP
-      CLUSTER_NAME=myAKSCluster
-      LOCATION=canadaeast
-      ```
+    
+   SP_PASSWORD=mySecurePassword
+   RESOURCE_GROUP_NAME=myResourceGroup-NP
+   CLUSTER_NAME=myAKSCluster
+   LOCATION=canadaeast
+      
 
        # Create a resource group
       az group create --name $RESOURCE_GROUP_NAME --location $LOCATION
