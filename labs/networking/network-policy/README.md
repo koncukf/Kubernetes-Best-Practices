@@ -23,12 +23,12 @@ The following example script:
      #Creates an AKS cluster in the defined virtual network, and enables network policy.
      
 Provide your own secure SP_PASSWORD. If desired, replace the RESOURCE_GROUP_NAME and CLUSTER_NAME variables:
-    
-   SP_PASSWORD=mySecurePassword
-   RESOURCE_GROUP_NAME=myResourceGroup-NP
-   CLUSTER_NAME=myAKSCluster
-   LOCATION=canadaeast
-      
+     ```bash
+     SP_PASSWORD=mySecurePassword
+     RESOURCE_GROUP_NAME=myResourceGroup-NP
+     CLUSTER_NAME=myAKSCluster
+     LOCATION=canadaeast
+     ```
 
        # Create a resource group
       az group create --name $RESOURCE_GROUP_NAME --location $LOCATION
