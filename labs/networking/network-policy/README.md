@@ -1,4 +1,4 @@
-# Lab: Secure traffic between pods using network policies in Azure Kubernetes Service (AKS)
+# Lab: Secure traffic between pods using network policies in Azure Kubernetes Service (AKS) 
 
 When you run modern, microservices-based applications in Kubernetes, you often want to control which components can communicate with each other. The principle of least privilege should be applied to how traffic can flow between pods in an AKS cluster. For example, you likely want to block traffic directly to backend applications. In Kubernetes, the Network Policy feature lets you define rules for ingress and egress traffic between pods in a cluster.
 
@@ -43,11 +43,17 @@ Provide your own secure SP_PASSWORD. If desired, replace the RESOURCE_GROUP_NAME
     --subnet-prefix 10.240.0.0/16
 
       # Create a service principal and read in the application ID
-      SP_ID=$(az ad sp create-for-rbac --password $SP_PASSWORD --skip-assignment --query [appId] -o tsv)
-
-      # Wait 15 seconds to make sure that service principal has propagated
-      echo "Waiting for service principal to propagate..."
-   sleep 15
+     az ad sp create-for-rbac --password $SP_PASSWORD --skip-assignment 
+   
+     Sample Output
+  "appId": "309dff66-1892-4ba7-94dd-362ea8bfd68",
+  "displayName": "azure-cli-2019-02-28-07-25-6",
+  "name": "http://azure-cli-2019-02-28-07-25-56",
+  "password": "P@ssW0rd1234!",
+  "tenant": "72f988bf-86f1-41af-91ab-2d7cd011db7"
+     
+     SP_ID=$APPID 
+      
 
       # Get the virtual network resource ID
       VNET_ID=$(az network vnet show --resource-group $RESOURCE_GROUP_NAME --name myVnet --query id -o tsv)
