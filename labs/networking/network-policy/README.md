@@ -1,6 +1,6 @@
-# Lab: Configure Network Policy
+# Lab: Secure traffic between pods using network policies in Azure Kubernetes Service (AKS)
 
-In this lab we will setup Kube-Router and Network Policies to enforce communication between services via Policy.
+When you run modern, microservices-based applications in Kubernetes, you often want to control which components can communicate with each other. The principle of least privilege should be applied to how traffic can flow between pods in an AKS cluster. For example, you likely want to block traffic directly to backend applications. In Kubernetes, the Network Policy feature lets you define rules for ingress and egress traffic between pods in a cluster.
 
 ## Prerequisites
 
@@ -9,126 +9,245 @@ In this lab we will setup Kube-Router and Network Policies to enforce communicat
     * [Build Application Components in Azure Container Registry](../../build-application/README.md)
     * [Helm Setup and Deploy Application](../../helm-setup-deploy/README.md)
 
-## Kubernetes and Kube-Router Overview
+## Overview of network policy
 
-Kubernetes networking has following security model:
+By default, all pods in an AKS cluster can send and receive traffic without limitations. To improve security, you can define rules that control the flow of traffic. For example, backend applications are often only exposed to required frontend services, or database components are only accessible to the application tiers that connect to them.
 
-* Every Pod can talk to every other Pod by default so a Pod can receive traffic from any one
-* Default allow behaviour can be changed to default deny on per namespace basis. When a namespace is configured with isolation tye of DefaultDeny no traffic is allowed to the pods in that namespace
-* When a namespace is configured with DefaultDeny isolation type, network policies can be configured in the namespace to whitelist the traffic to the pods in that namespace
+Network policies are Kubernetes resources that let you control the traffic flow between pods. You can choose to allow or deny traffic based on settings such as assigned labels, namespace, or traffic port. Network policies are defined as a YAML manifests, and can be included as part of a wider manifest that also creates a deployment or service.
+To see network policies in action, let's create and then expand on a policy that defines traffic flow as follows:
 
-Kubernetes network policies are application centric compared to infrastructure/network centric standard firewalls. There are no explicit CIDR or IP used for matching source or destination IP’s. Network policies build up on labels and selectors which are key concepts of Kubernetes that are used to organize (for e.g all DB tier pods of app) and select subsets of objects.
+Deny all traffic to pod.
+Allow traffic based on pod labels.
+Allow traffic based on namespace.
 
-In this lab we will use Kube-Router for Network Policy Management. Kube-Router will use ipsets with iptables to ensure your firewall rules have as little performance impact on your cluster as possible.
+## Create an AKS cluster and enable network policy
+The following example script:
+     
+     #Creates a virtual network and subnet.
+     #Creates an Azure Active Directory (AD) service principal for use with the AKS cluster.
+     #Assigns Contributor permissions for the AKS cluster service principal on the virtual network.
+     #Creates an AKS cluster in the defined virtual network, and enables network policy.
+     
+Provide your own secure SP_PASSWORD. If desired, replace the RESOURCE_GROUP_NAME and CLUSTER_NAME variables:
+      ```bash
+      SP_PASSWORD=mySecurePassword
+      RESOURCE_GROUP_NAME=myResourceGroup-NP
+      CLUSTER_NAME=myAKSCluster
+      LOCATION=canadaeast
+      ```
 
-## Instructions
+       # Create a resource group
+      az group create --name $RESOURCE_GROUP_NAME --location $LOCATION
 
-1. Run the following commands to deploy kube-router and verify it is running on your cluster.
+      # Create a virtual network and subnet
+      az network vnet create \
+    --resource-group $RESOURCE_GROUP_NAME \
+    --name myVnet \
+    --address-prefixes 10.0.0.0/8 \
+    --subnet-name myAKSSubnet \
+    --subnet-prefix 10.240.0.0/16
+
+      # Create a service principal and read in the application ID
+      SP_ID=$(az ad sp create-for-rbac --password $SP_PASSWORD --skip-assignment --query [appId] -o tsv)
+
+      # Wait 15 seconds to make sure that service principal has propagated
+      echo "Waiting for service principal to propagate..."
+   sleep 15
+
+      # Get the virtual network resource ID
+      VNET_ID=$(az network vnet show --resource-group $RESOURCE_GROUP_NAME --name myVnet --query id -o tsv)
+
+      # Assign the service principal Contributor permissions to the virtual network resource
+      az role assignment create --assignee $SP_ID --scope $VNET_ID --role Contributor
+
+      # Get the virtual network subnet resource ID
+      SUBNET_ID=$(az network vnet subnet show --resource-group $RESOURCE_GROUP_NAME --vnet-name myVnet --name myAKSSubnet --query id -o tsv)
+
+      # Create the AKS cluster and specify the virtual network and service principal information
+      # Enable network policy using the `--network-policy` parameter
+      az aks create \
+    --resource-group $RESOURCE_GROUP_NAME \
+    --name $CLUSTER_NAME \
+    --node-count 1 \
+    --kubernetes-version 1.12.4 \
+    --generate-ssh-keys \
+    --network-plugin azure \
+    --service-cidr 10.0.0.0/16 \
+    --dns-service-ip 10.0.0.10 \
+    --docker-bridge-address 172.17.0.1/16 \
+    --vnet-subnet-id $SUBNET_ID \
+    --service-principal $SP_ID \
+    --client-secret $SP_PASSWORD \
+    --network-policy calico
+
+It takes a few minutes to create the cluster. When finished, configure kubectl to connect to your Kubernetes cluster using the az aks get-credentials command. 
+
+      az aks get-credentials --resource-group $RESOURCE_GROUP_NAME --name $CLUSTER_NAME
+
+## Deny all inbound traffic to a pod
 
    ```bash
-   cd ~/Kubernetes-Best-Practices
-   kubectl apply -f ./labs/networking/network-policy/kube-router.yaml
-   kubectl get daemonset -n kube-system -l k8s-app=kube-router
+   kubectl create namespace development
+   kubectl label namespace/development purpose=development
    ```
+Now create an example backend pod that runs NGINX. 
 
-2. Take a look at the [deny-all file](deny-all.yaml) for an example of a Kubernetes Network Policy. In this case this is a blanket policy across all Namespaces and Pods to deny traffic. Apply the deny-all.yaml file which will break the applicaton as no communication between Pods will be allowed.
+    kubectl run backend --image=nginx --labels app=webapp,role=backend --namespace development --expose --port 80 --generator=run-pod/v1
+    
+To test that you can successfully reach the default NGINX web page, create another pod, and attach a terminal session    
+  
+    kubectl run --rm -it --image=alpine network-policy --namespace development --generator=run-pod/v1   
+    
+ Once at shell prompt, use wget to confirm you can access the default NGINX web page:
 
     ```bash
-    kubectl apply -f ./labs/networking/network-policy/deny-all.yaml
-    kubectl get networkpolicy -n hackfest
+    wget -qO- http://backend
+    ```
+Exit out of the attached terminal session. The test pod is automatically deleted:
+
+    exit
+
+## Apply a network policy
+  
+    ```bash
+      kubectl apply -f ./labs/networking/network-policy/backend-policy.yaml    
     ```
 
-3. Test out the Application by going to the Dashboard and clicking on the Refresh Data button for one of the APIs. You should see that the Refresh is taking an extra long time and eventually comes back with an error. This is becuase you have denied all Ingress to Pods, which means all traffic into the Cluster.
+Test the network policy
+Let's see if you can access the NGINX webpage on the backend pod again. Create another test pod and attach a terminal session:
 
-    ![Example Error Message](img-refresh-error.png "Error from Data Refresh")
+     kubectl run --rm -it --image=alpine network-policy --namespace development --generator=run-pod/v1
+     
+Once at shell prompt, use wget to see if you can access the default NGINX web page. This time, set a timeout value to 2 seconds. The network policy now blocks all inbound traffic, so the page cannot be loaded, as shown in the following example:
 
-4. Test out connectivity between Pods by interacting with a Pod using kubectl exec. Let's log into the Quakes API pod and try to access somethign outside of the Pod.
+      $ wget -qO- --timeout=2 http://backend
 
+      wget: download timed out
+      
+      exit
+
+##    Allow inbound traffic based on a pod label
+
+In the previous section, a backend NGINX pod was scheduled, and a network policy was created to deny all traffic. Now let's create a frontend pod and update the network policy to allow traffic from frontend pods.
+Update the network policy to allow traffic from pods with the labels app:webapp,role:frontend and in any namespace.
+   
     ```bash
-    # Log into the Pod
-    kubectl exec -it $(kubectl get pod -n hackfest -l "app=quakes-api" -o jsonpath='{.items[0].metadata.name}') -n hackfest -- /bin/sh
-    # Once inside the Pod try to do a nslookup on the flights API
-    nslookup flights-api
+      kubectl apply -f ./labs/networking/network-policy/backend-policy2.yaml    
+    ``` 
+    
+Now schedule a pod that is labeled as app=webapp,role=frontend and attach a terminal session:   
+   
+    kubectl run --rm -it frontend --image=alpine --labels app=webapp,role=frontend --namespace development --generator=run-pod/v1
+   
+Once at shell prompt, use wget to see if you can access the default NGINX web page:
+
+     wget -qO- http://backend
+     
+     
+The following example output shows the default NGINX web page returned     
+     
+      <!DOCTYPE html>
+      <html>
+      <head>
+      <title>Welcome to nginx!</title>
+      [...]
+
+Exit out of the attached terminal session. The pod is automatically deleted:
+
+      exit
+
+## Test a pod without a matching label
+
+The network policy allows traffic from pods labeled app: webapp,role: frontend, but should deny all other traffic. Let's test that another pod without those labels can't access the backend NGINX pod. Create another test pod and attach a terminal session:
+
+      ```bash
+        kubectl run --rm -it --image=alpine network-policy --namespace development --generator=run-pod/v1
+       ```
+Once at shell prompt, use wget to see if you can access the default NGINX web page 
+
+      $ wget -qO- --timeout=2 http://backend
+
+      wget: download timed out
+      
+Exit out of the attached terminal session. The test pod is automatically deleted:
+      
+      exit  
+      
+      
+ ##   Allow traffic only from within a defined namespace
+ 
+ In the previous examples, you created a network policy that denied all traffic, then updated the policy to allow traffic from pods with a specific label. One other common need is to limit traffic to only within a given namespace. If the previous examples were for traffic in a development namespace, you may want to then create a network policy that prevents traffic from another namespace, such as production, from reaching the pods.
+ 
+    ```bash
+    # First, create a new namespace to simulate a production namespace:
+    kubectl create namespace production
+    kubectl label namespace/production purpose=production 
+    # Schedule a test pod in the production namespace that is labeled as app=webapp,role=frontend. Attach a terminal session
+    kubectl run --rm -it frontend --image=alpine --labels app=webapp,role=frontend --namespace production --generator=run-pod/v1    
+    # Once at shell prompt, use wget to confirm you can access the default NGINX web page:
+    wget -qO- http://backend.development    
     ```
 
     **Sample Output:**
     ```bash
-    /usr/src/app # nslookup flights-api
-    nslookup: can't resolve '(null)': Name does not resolve
-
-    nslookup: can't resolve 'flights-api': Try again
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <title>Welcome to nginx!</title>
+    [...]
     ```
 
     ```bash
     # Now exit out of the Pod
     exit
     ```
+## Update the network policy
 
-5. As we can see from above all ingress and egress traffic from Pods has been blocked. Let's enable traffic between Pods in the **default** Namespace. First, take a look at the [allow default namespace file](allow-default-namespace.yaml) and notice the Ingress (from: synatx) and Egress (to: syntax) are allowed in the **default** namespace.
+Now let's update the ingress rule namespaceSelector section to only allow traffic from within the development namespace.
+
+      ```bash
+       kubectl apply -f ./labs/networking/network-policy/backend-policy-update.yaml    
+      ``` 
+Now schedule another pod in the production namespace and attach a terminal session:
+
 
     ```bash
-    # Apply the Allow Network Policy
-    kubectl apply -f ./labs/networking/network-policy/allow-default-namespace.yaml
-    kubectl get networkpolicy -n hackfest
-    # Let's Test the nslookup again
-    kubectl exec -it $(kubectl get pod -n hackfest -l "app=quakes-api" -o jsonpath='{.items[0].metadata.name}') -n hackfest -- /bin/sh
-    # Once inside the Pod try to do a nslookup on the flights API
-    nslookup flights-api
-    ```
+    # Now schedule another pod in the production namespace and attach a terminal session
+    kubectl run --rm -it frontend --image=alpine --labels app=webapp,role=frontend --namespace production --generator=run-pod/v1
+   
+    # Once at shell prompt, use wget to see the network policy now deny traffic
+    $ wget -qO- --timeout=2 http://backend.development
 
+      wget: download timed out
+      
+    # Exit out of the test pod:
+    exit   
+    
+    # With traffic denied from the production namespace, now schedule a test pod back in the development namespace and attach a terminal session
+    kubectl run --rm -it frontend --image=alpine --labels app=webapp,role=frontend --namespace development --generator=run-pod/v1    ```
+
+    # Once at shell prompt, use wget to see the network policy allow the traffic:
+    wget -qO- http://backend
+    
+    
     **Sample Output:**
     ```bash
-    /usr/src/app # nslookup flights-api
-    nslookup: can't resolve '(null)': Name does not resolve
-
-    nslookup: can't resolve 'flights-api': Try again
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <title>Welcome to nginx!</title>
+    [...]
     ```
 
     ```bash
     # Now exit out of the Pod
     exit
     ```
+## Clean up resources
 
-6. So what gives as it is still not working. In order for nslookup to work it requires to be able to talk to the kube-dns server. Let's delete the Network Policy and try one that allows egress.
-
-    ```bash
-    # Delete Previous Network Allow Policy
-    kubectl delete -f ./labs/networking/network-policy/allow-default-namespace.yaml
-    kubectl get networkpolicy -n hackfest
-    # Apply the Allow Network Policy
-    kubectl apply -f ./labs/networking/network-policy/allow-default-namespace-with-egress.yaml
-    kubectl get networkpolicy -n hackfest
-    # Let's Test the nslookup again
-    kubectl exec -it $(kubectl get pod -n hackfest -l "app=quakes-api" -o jsonpath='{.items[0].metadata.name}') -n hackfest -- /bin/sh
-    # Once inside the Pod try to do a nslookup on the flights API
-    nslookup flights-api
-    ```
-
-    **Sample Output:**
-    ```bash
-    /usr/src/app # nslookup flights-api
-    nslookup: can't resolve '(null)': Name does not resolve
-
-    Name:      flights-api
-    Address 1: 10.0.230.91 flights-api.default.svc.cluster.local
-    ```
-
-    ```bash
-    # Now exit out of the Pod
-    exit
-    ```
-
-7. All right we now have connectivity between the Pods and it can interact with kube-dns to resolve Service Endpoints. Great, but my UI is still not responding, what do I do? We leave this last exercise up to you to figure out.
-
-    * **Hint:** Create a Network Policy that allows the proper Ingress traffic to only the UI Pods (think PodSelectors and labels).
-
-8. Cleanup all the Network Policies so if you do other labs they will not interfere.
-
-    ```bash
-    # Cleanup Network Policies
-    kubectl delete networkpolicy --all -n hackfest
-   kubectl get networkpolicy -n hackfest
-    ```
+    kubectl delete namespace production
+    kubectl delete namespace development
+    
 
 ## Troubleshooting / Debugging
 
