@@ -12,8 +12,8 @@ This section contains a number of labs related to Networking decisions that are 
 ## Labs
 
 1. [Configure Ingress Controller](ingress/README.md)
-2. [Configure Network Policy](network-policy/README.md)
-3. [Configure Network Policy](network-policy/README.md)
+2. [Configure Network Policy- Kube-Router](network-policy/README.md)
+3. [Configure Network Policy- Calico](network-policy/README.md)
 
 
 ## Troubleshooting / Debugging
