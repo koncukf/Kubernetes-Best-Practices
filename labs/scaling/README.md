@@ -39,11 +39,17 @@ The Kubernetes Horizontal Pod Autoscaler (HPA) automatically scales the number o
     ```bash
     kubectl apply -f ~/Kubernetes-Best-Practices/labs/scaling/hpa.yaml -n hackfest
     ```
+## Hit it with some Load
+I've been using Hey
+
+export GOPATH=~/go
+export PATH=$GOPATH/bin:$PATH
+go get -u github.com/rakyll/hey
+hey -z 20m http://<whatever-the-ingress-url-is>
 
 3. Validate the number of pods is now 5 which is our `minReplicas` set with the HPA
 
 4. We could generate traffic to our front end enough to drive CPU utilization up and the HPA would auto-scale up to 10 max
-
 
 ### Cluster Scaling Manual 
 
